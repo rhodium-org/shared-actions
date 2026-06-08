@@ -1,0 +1,197 @@
+name: 'Trivy-gated Docker build'
+description: >-
+  Build a Docker image, gate on HIGH/CRITICAL fixable CVEs with Trivy,
+  then push only on scan-pass. CVE-laden images never reach the registry.
+
+# Pattern (canonical reference: rhodium-org/scout build.yml):
+#   docker/setup-buildx → docker login (skipped on PR) →
+#   build (load: true, push: false) → trivy-action (exit-code: '1') →
+#   build (push: true). The second build re-runs only metadata; layers
+#   come from registry + GHA caches so it adds seconds, not minutes.
+
+inputs:
+  image-name:
+    description: 'Fully-qualified image name (e.g. ghcr.io/rhodium-org/app). Used for scan ref and as the default cache image.'
+    required: true
+  context:
+    description: 'Docker build context.'
+    required: false
+    default: '.'
+  dockerfile:
+    description: 'Path to Dockerfile (relative to repo root, matching docker/build-push-action `file:` semantics).'
+    required: false
+    default: 'Dockerfile'
+  platforms:
+    description: 'Target platforms (CSV).'
+    required: false
+    default: 'linux/amd64'
+  severity:
+    description: 'Trivy severities that fail the gate.'
+    required: false
+    default: 'CRITICAL,HIGH'
+  trivyignore-path:
+    description: 'Path to .trivyignore file (relative to repo root). Silently skipped if the file is absent.'
+    required: false
+    default: '.trivyignore'
+  tags:
+    description: 'Newline-separated final tags for the push step (typically the output of docker/metadata-action). If empty, the action scans but does not push.'
+    required: false
+    default: ''
+  labels:
+    description: 'Newline-separated labels (typically from docker/metadata-action).'
+    required: false
+    default: ''
+  build-args:
+    description: 'Newline-separated build args (KEY=value lines).'
+    required: false
+    default: ''
+  build-secrets:
+    description: 'Newline-separated build secrets (KEY=value lines).'
+    required: false
+    default: ''
+  push:
+    description: 'Whether to push after a successful scan. Set false for pull_request runs.'
+    required: false
+    default: 'true'
+  registry:
+    description: 'Registry hostname for login.'
+    required: false
+    default: 'ghcr.io'
+  registry-username:
+    description: 'Registry username. Default: github.actor.'
+    required: false
+    default: ${{ github.actor }}
+  registry-password:
+    description: 'Registry password / token. Required when push=true (typically secrets.GITHUB_TOKEN).'
+    required: false
+    default: ''
+  cache-image:
+    description: 'Image:tag used as the registry buildcache. Defaults to <image-name>:buildcache.'
+    required: false
+    default: ''
+  provenance:
+    description: 'Pass-through to docker/build-push-action provenance.'
+    required: false
+    default: 'true'
+  sbom:
+    description: 'Pass-through to docker/build-push-action sbom.'
+    required: false
+    default: 'true'
+
+outputs:
+  digest:
+    description: 'Pushed image digest. Empty when push=false or tags is empty.'
+    value: ${{ steps.push.outputs.digest }}
+  scan-tag:
+    description: 'Local image tag used for the Trivy scan.'
+    value: ${{ steps.vars.outputs.scan_tag }}
+
+runs:
+  using: composite
+  steps:
+    # Resolve a few derived values once, in shell, so the rest of the
+    # action stays declarative.
+    - id: vars
+      shell: bash
+      run: |
+        scan_tag="${{ inputs.image-name }}:scan-${{ github.run_id }}-${{ github.run_attempt }}"
+        echo "scan_tag=${scan_tag}" >> "$GITHUB_OUTPUT"
+
+        cache_image="${{ inputs.cache-image }}"
+        if [ -z "${cache_image}" ]; then
+          cache_image="${{ inputs.image-name }}:buildcache"
+        fi
+        echo "cache_image=${cache_image}" >> "$GITHUB_OUTPUT"
+
+        # trivy-action errors hard if trivyignores points at a missing
+        # file. Resolve to empty if the path doesn't exist.
+        ti_path="${{ inputs.trivyignore-path }}"
+        if [ -n "${ti_path}" ] && [ -f "${ti_path}" ]; then
+          echo "trivyignores=${ti_path}" >> "$GITHUB_OUTPUT"
+        else
+          echo "trivyignores=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: network=host
+
+    # Cache key includes run_id so each run gets a clean slot, but the
+    # restore-keys fallback finds the most-recent previous DB. Trivy's
+    # DB is ~50 MB and refreshes every 6 h; caching it cuts ~20-30 s.
+    - name: Cache Trivy DB
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/trivy
+        key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: |
+          trivy-db-${{ runner.os }}-
+
+    # Log in BEFORE the first build so the registry cache backend can
+    # pull. Skipped on PRs (no write perms anyway, no push at the end).
+    - name: Log in to registry
+      if: inputs.push == 'true'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.registry-username }}
+        password: ${{ inputs.registry-password }}
+
+    # First build: into the local daemon only. NEVER reaches the
+    # registry. Trivy scans this image; if a CVE matches the gate the
+    # job fails here and the push step below never runs.
+    - id: build
+      name: Build (load only — scan target)
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        load: true
+        push: false
+        tags: ${{ steps.vars.outputs.scan_tag }}
+        labels: ${{ inputs.labels }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: |
+          type=registry,ref=${{ steps.vars.outputs.cache_image }}
+          type=gha
+        cache-to: type=gha,mode=max
+        secrets: ${{ inputs.build-secrets }}
+
+    # THE GATE. exit-code: '1' fails the job. ignore-unfixed: true so
+    # we only fail on CVEs we can act on (base-image bumps for
+    # unfixed-upstream are tracked elsewhere).
+    - name: Trivy scan (gate)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ steps.vars.outputs.scan_tag }}
+        format: table
+        severity: ${{ inputs.severity }}
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        trivyignores: ${{ steps.vars.outputs.trivyignores }}
+
+    # Scan passed. Re-run with push: true; caches make this fast.
+    # Skipped when push=false or no tags were supplied (PR runs).
+    - id: push
+      name: Push (only on scan-pass)
+      if: inputs.push == 'true' && inputs.tags != ''
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        push: true
+        tags: ${{ inputs.tags }}
+        labels: ${{ inputs.labels }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: |
+          type=registry,ref=${{ steps.vars.outputs.cache_image }}
+          type=gha
+        cache-to: |
+          type=registry,ref=${{ steps.vars.outputs.cache_image }},mode=max
+          type=gha,mode=max
+        provenance: ${{ inputs.provenance }}
+        sbom: ${{ inputs.sbom }}
+        secrets: ${{ inputs.build-secrets }}

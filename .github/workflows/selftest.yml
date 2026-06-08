@@ -1,0 +1,76 @@
+name: selftest
+
+# Two scenarios, both must pass for the action to be considered green:
+#   1. clean image  → gate PASSES   (action exits 0)
+#   2. CVE image    → gate BLOCKS   (action exits non-zero; we invert)
+#
+# Run on every push to main, every PR, and on a daily schedule so the
+# CVE database catching up with a new release of one of our base
+# images doesn't go undetected.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Daily at 03:17 UTC — off the top-of-hour rush.
+    - cron: '17 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-must-pass:
+    name: clean image — gate must PASS
+    runs-on: [self-hosted, org, linux, docker]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: clean
+        name: Build clean fixture through the gate
+        uses: ./actions/trivy-gated-build
+        with:
+          image-name: ghcr.io/rhodium-org/shared-actions-selftest-clean
+          context: tests/clean
+          dockerfile: tests/clean/Dockerfile
+          push: 'false'
+
+      - name: Confirm clean image passed
+        run: echo "OK — Trivy did not flag the clean fixture."
+
+  sentinel-cve-must-block:
+    name: CVE fixture — gate must BLOCK
+    runs-on: [self-hosted, org, linux, docker]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      # The expectation here is INVERTED: this step must exit non-zero.
+      # continue-on-error: true keeps the job alive so the assertion
+      # step below can check the outcome.
+      - id: cve
+        name: Build CVE-laden fixture (expect failure)
+        continue-on-error: true
+        uses: ./actions/trivy-gated-build
+        with:
+          image-name: ghcr.io/rhodium-org/shared-actions-selftest-cve
+          context: tests/sentinel-cve
+          dockerfile: tests/sentinel-cve/Dockerfile
+          push: 'false'
+
+      - name: Assert gate BLOCKED the CVE image
+        if: steps.cve.outcome != 'failure'
+        run: |
+          echo "::error::SELFTEST REGRESSION — the gate did NOT block the sentinel-CVE fixture."
+          echo "::error::Either pyyaml 5.1 dropped out of Trivy's database, or the action's exit-code: '1' wiring is broken."
+          exit 1
+
+      - name: Confirm gate worked
+        if: steps.cve.outcome == 'failure'
+        run: echo "OK — gate correctly blocked the sentinel-CVE fixture."
