@@ -21,6 +21,10 @@ inputs:
     description: 'Path to Dockerfile (relative to repo root, matching docker/build-push-action `file:` semantics).'
     required: false
     default: 'Dockerfile'
+  target:
+    description: 'Multi-stage build target. Maps to docker/build-push-action `target:`. Empty = final stage. Needed for matrix builds that emit multiple images from one Dockerfile.'
+    required: false
+    default: ''
   platforms:
     description: 'Target platforms (CSV).'
     required: false
@@ -150,6 +154,7 @@ runs:
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}
+        target: ${{ inputs.target }}
         platforms: ${{ inputs.platforms }}
         load: true
         push: false
@@ -186,6 +191,7 @@ runs:
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}
+        target: ${{ inputs.target }}
         platforms: ${{ inputs.platforms }}
         push: true
         tags: ${{ inputs.tags }}
