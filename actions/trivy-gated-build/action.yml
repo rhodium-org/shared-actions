@@ -33,6 +33,10 @@ inputs:
     description: 'Path to .trivyignore file (relative to repo root). Silently skipped if the file is absent.'
     required: false
     default: '.trivyignore'
+  trivy-timeout:
+    description: 'Trivy scan timeout (e.g. 15m0s). Empty = trivy-action default (5m). Needed for images bundling large binaries (CUDA libs, ML model weights) that exceed the default scan window.'
+    required: false
+    default: ''
   tags:
     description: 'Newline-separated final tags for the push step (typically the output of docker/metadata-action). If empty, the action scans but does not push.'
     required: false
@@ -171,6 +175,7 @@ runs:
         ignore-unfixed: true
         vuln-type: 'os,library'
         trivyignores: ${{ steps.vars.outputs.trivyignores }}
+        timeout: ${{ inputs.trivy-timeout }}
 
     # Scan passed. Re-run with push: true; caches make this fast.
     # Skipped when push=false or no tags were supplied (PR runs).
