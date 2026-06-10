@@ -130,7 +130,10 @@ jobs:
       - name: Assert meta-guards pass/fail correctly
         shell: bash
         run: |
-          set -uo pipefail
+          # GitHub's default shell is `bash -e`; disable exit-on-error so the
+          # intentional non-zero exits below (expected failures) don't abort
+          # the step before we assert them. We exit 1 explicitly at the end.
+          set +e -u
           CHECK="actions/security-policy-check/check.py"
           OK_DATE=$(date -d "+30 days" +%Y-%m-%d)
           SOON_DATE=$(date -d "+5 days" +%Y-%m-%d)
