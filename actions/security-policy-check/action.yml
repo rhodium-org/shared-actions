@@ -66,6 +66,11 @@ runs:
       name: Run security-debt policy check
       shell: bash
       run: |
+        # Slug from the policy path so multiple invocations in one job
+        # (e.g. backend + frontend) produce unique artifact names — v4
+        # upload-artifact rejects duplicate names within a run.
+        slug="$(printf '%s' '${{ inputs.policy }}' | tr '/.' '__' | tr -cd 'A-Za-z0-9_-')"
+        echo "slug=${slug}" >> "$GITHUB_OUTPUT"
         python "${GITHUB_ACTION_PATH}/check.py" \
           --policy '${{ inputs.policy }}' \
           --guards-dir '${{ inputs.guards-dir }}' \
@@ -78,7 +83,7 @@ runs:
       if: ${{ always() && inputs.upload-report == 'true' && inputs.report-path != '' }}
       uses: actions/upload-artifact@v4
       with:
-        name: security-debt-report-${{ github.job }}
+        name: security-debt-report-${{ github.job }}-${{ steps.check.outputs.slug }}
         path: ${{ inputs.report-path }}
         if-no-files-found: ignore
         retention-days: 30
