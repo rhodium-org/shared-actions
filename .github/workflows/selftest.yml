@@ -38,10 +38,45 @@ jobs:
           image-name: ghcr.io/rhodium-org/shared-actions-selftest-clean
           context: tests/clean
           dockerfile: tests/clean/Dockerfile
+          # A passing predicate guard must NOT break a clean build.
+          predicate-guard: tests/guard-pass.sh
           push: 'false'
 
       - name: Confirm clean image passed
-        run: echo "OK — Trivy did not flag the clean fixture."
+        run: echo "OK — Trivy did not flag the clean fixture; passing guard let it through."
+
+  guard-violation-must-block:
+    name: predicate guard violated — gate must BLOCK
+    runs-on: [self-hosted, org, linux, docker]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      # INVERTED expectation: a failing predicate guard must abort the gate
+      # BEFORE any build, proving a suppression can't outlive its
+      # justification. continue-on-error keeps the job alive to assert.
+      - id: guard
+        name: Build clean fixture but with a VIOLATED guard (expect failure)
+        continue-on-error: true
+        uses: ./actions/trivy-gated-build
+        with:
+          image-name: ghcr.io/rhodium-org/shared-actions-selftest-guard
+          context: tests/clean
+          dockerfile: tests/clean/Dockerfile
+          predicate-guard: tests/guard-fail.sh
+          push: 'false'
+
+      - name: Assert gate BLOCKED on the violated guard
+        if: steps.guard.outcome != 'failure'
+        run: |
+          echo "::error::SELFTEST REGRESSION — a failing predicate-guard did NOT block the gate."
+          echo "::error::The predicate-guard step's non-zero exit is no longer fatal."
+          exit 1
+
+      - name: Confirm guard worked
+        if: steps.guard.outcome == 'failure'
+        run: echo "OK — violated predicate guard correctly blocked the gate before build."
 
   sentinel-cve-must-block:
     name: CVE fixture — gate must BLOCK

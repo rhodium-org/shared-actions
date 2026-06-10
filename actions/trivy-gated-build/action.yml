@@ -41,6 +41,17 @@ inputs:
     description: 'Trivy scan timeout (e.g. 15m0s). Empty = trivy-action default (5m). Needed for images bundling large binaries (CUDA libs, ML model weights) that exceed the default scan window.'
     required: false
     default: ''
+  predicate-guard:
+    description: >-
+      Path to a guard script (relative to repo root) that asserts the
+      invariants justifying this image''s .trivyignore / suppression entries
+      still hold — e.g. "no source code reads request.url for auth", the
+      predicate behind a suppressed Host-header-confusion CVE. Runs BEFORE
+      the build (fail-fast) and a non-zero exit fails the gate, so a
+      suppression can never silently outlive its justification. The script
+      is invoked as `bash <path>` from the repo root. Empty = no guard.
+    required: false
+    default: ''
   tags:
     description: 'Newline-separated final tags for the push step (typically the output of docker/metadata-action). If empty, the action scans but does not push.'
     required: false
@@ -97,6 +108,23 @@ outputs:
 runs:
   using: composite
   steps:
+    # Suppression predicate guard. Runs FIRST — before we spend any time
+    # building — so a .trivyignore suppression can never outlive the
+    # assumption that justifies it. The guard script encodes those
+    # assumptions as code (e.g. "no source reads request.url for auth");
+    # a non-zero exit fails the gate. See README § "Guarding suppressions".
+    - name: Suppression predicate guard
+      if: inputs.predicate-guard != ''
+      shell: bash
+      run: |
+        guard="${{ inputs.predicate-guard }}"
+        if [ ! -f "${guard}" ]; then
+          echo "::error::predicate-guard script '${guard}' not found in the checked-out repo"
+          exit 1
+        fi
+        echo "▶ Running suppression predicate guard: ${guard}"
+        bash "${guard}"
+
     # Resolve a few derived values once, in shell, so the rest of the
     # action stays declarative.
     - id: vars

@@ -82,6 +82,9 @@ jobs:
 | `platforms`         | `linux/amd64`        | CSV. |
 | `severity`          | `CRITICAL,HIGH`      | Trivy gate severities. |
 | `trivyignore-path`  | `.trivyignore`       | Silently skipped if the file is absent. |
+| `trivy-timeout`     | (empty)              | e.g. `15m0s`. For images bundling large binaries (CUDA, ML weights). Empty = trivy-action 5m default. |
+| `target`            | (empty)              | Multi-stage build target. Empty = final stage. For matrix builds emitting several images from one Dockerfile. |
+| `predicate-guard`   | (empty)              | Path to a guard script that asserts the invariants behind your suppressions still hold. Runs first; non-zero exit fails the gate. See [Guarding suppressions](#guarding-suppressions). |
 | `tags`              | (empty)              | Final tags for the push step. Empty = scan only. Pass `${{ steps.meta.outputs.tags }}`. |
 | `labels`            | (empty)              | Final labels. Pass `${{ steps.meta.outputs.labels }}`. |
 | `build-args`        | (empty)              | Newline-separated `KEY=value`. |
@@ -98,6 +101,60 @@ jobs:
 
 - `digest` — pushed image digest (empty when `push=false` or `tags` empty)
 - `scan-tag` — local tag used for the Trivy scan
+
+## Guarding suppressions
+
+A `.trivyignore` entry carries a justification — but the justification is a
+point-in-time human judgement that nothing enforces as the code evolves.
+"Safe because we don't read `request.url.path` for auth" silently rots the
+moment someone adds that usage.
+
+`predicate-guard` turns the prose justification into an enforceable
+invariant, wired into the **same gate** that honours the suppression so the
+two can't drift apart. The script runs first (fail-fast); a non-zero exit
+blocks the build.
+
+```yaml
+      - uses: rhodium-org/shared-actions/actions/trivy-gated-build@v1
+        with:
+          image-name: ghcr.io/rhodium-org/myapp
+          trivyignore-path: backend/.trivyignore
+          predicate-guard: backend/ci-guards/no-request-url.sh
+          # ...
+```
+
+A guard script is just shell — fail on the condition that would invalidate
+a suppression, with a message that names the CVE and the fix:
+
+```bash
+#!/usr/bin/env bash
+# Predicate for the suppressed PYSEC-2026-161 (starlette Host-header auth
+# bypass): no source may read request.url for security decisions.
+set -euo pipefail
+hits="$(grep -rnE 'request\.url(\.path)?' backend --include='*.py' \
+          | grep -vE '/tests?/|# pysec-2026-161-reviewed' || true)"
+if [ -n "$hits" ]; then
+  echo "::error::PYSEC-2026-161 predicate violated — request.url is read:"
+  echo "$hits"
+  exit 1
+fi
+```
+
+Three complementary layers, weakest → strongest:
+
+1. **Expiry date** in the `.trivyignore` comment — bounds staleness, forces
+   periodic re-review (see reports-guide's `exp:YYYY-MM-DD` convention).
+2. **`predicate-guard`** — catches the specific assumption being violated.
+   Grep is fine; semgrep is more precise (ignores comments/strings,
+   narrows to auth/middleware paths).
+3. **Behavioural regression test** in your normal test suite — asserts the
+   security *outcome* (e.g. a malicious `Host` header can't bypass auth),
+   so it survives refactors the static guard can't see. This is the only
+   layer that holds even if someone legitimately starts using `request.url`.
+
+Reference implementation: `rhodium-org/access-manager`
+(`backend/ci-guards/no-request-url.sh` + the PYSEC-2026-161 Host-header
+test in `backend/tests/`).
 
 ## What the gate catches (and doesn't)
 
