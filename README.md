@@ -9,6 +9,7 @@ images and `[self-hosted, org, linux, docker]` runners.
 | Action | Purpose |
 |--------|---------|
 | [`actions/trivy-gated-build`](actions/trivy-gated-build) | Build a Docker image, gate on Trivy HIGH/CRITICAL fixable CVEs, push only on scan-pass. CVE-laden images never reach the registry. Foundation for [cluster#67] platform-wide remediation. |
+| [`actions/security-policy-check`](actions/security-policy-check) | Meta-guard for CVE-suppression hygiene: fails CI on naked / expired / over-TTL suppressions and orphan guards; emits a JSON report for fleet monitoring. The self-managing spine — suppressions become time-boxed liabilities, never permanent. |
 
 ## Versioning
 
@@ -29,6 +30,10 @@ Today the selftest covers:
 - `actions/trivy-gated-build`:
   - clean image (`python:3.13-alpine`) → gate PASSES
   - CVE-laden image (`pyyaml==5.1` — CVE-2020-1747 + CVE-2020-14343, both HIGH/fixable) → gate BLOCKS
+  - passing `predicate-guard` → clean build still PASSES; violated guard → gate BLOCKS
+- `actions/security-policy-check`:
+  - clean / expiring-soon policy → PASSES; naked / expired / over-TTL → BLOCKS
+    (fixtures generated with relative dates so the selftest never rots)
 
 ## Related
 

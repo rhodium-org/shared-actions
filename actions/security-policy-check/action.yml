@@ -1,0 +1,84 @@
+name: 'Security-debt policy check'
+description: >-
+  Meta-guard for CVE-suppression hygiene. Fails CI when a suppression is
+  naked (no justification/expiry), expired, or set to an over-long TTL, or
+  when a predicate guard is orphaned. Emits a Markdown summary, GH
+  annotations and a JSON report for fleet-wide monitoring. The enforcement
+  spine that keeps security debt converging instead of accumulating.
+
+inputs:
+  policy:
+    description: 'Path to the Trivy YAML suppression file (.trivyignore.yaml).'
+    required: false
+    default: '.trivyignore.yaml'
+  guards-dir:
+    description: 'Directory holding predicate-guard scripts (orphan check).'
+    required: false
+    default: 'ci-guards'
+  workflows-dir:
+    description: 'Where to look for `predicate-guard:` wiring.'
+    required: false
+    default: '.github/workflows'
+  max-ttl-days:
+    description: 'A suppression may not expire further out than today + this. No "forever".'
+    required: false
+    default: '90'
+  warn-within-days:
+    description: 'Suppressions expiring within this window get a warning annotation (not a failure).'
+    required: false
+    default: '14'
+  report-path:
+    description: 'Write the JSON report here (consumed by the fleet aggregator). Empty = no file.'
+    required: false
+    default: 'security-debt-report.json'
+  upload-report:
+    description: 'Upload the JSON report as a build artifact.'
+    required: false
+    default: 'true'
+
+outputs:
+  total:
+    description: 'Number of suppressions in the policy file.'
+    value: ${{ steps.check.outputs.total }}
+  expired:
+    description: 'Number already expired.'
+    value: ${{ steps.check.outputs.expired }}
+  expiring-soon:
+    description: 'Number expiring within warn-within-days.'
+    value: ${{ steps.check.outputs.expiring_soon }}
+  violations:
+    description: 'Total hard violations (non-zero fails the gate).'
+    value: ${{ steps.check.outputs.violations }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install PyYAML
+      shell: bash
+      run: python -m pip install --quiet 'pyyaml>=6,<7'
+
+    - id: check
+      name: Run security-debt policy check
+      shell: bash
+      run: |
+        python "${GITHUB_ACTION_PATH}/check.py" \
+          --policy '${{ inputs.policy }}' \
+          --guards-dir '${{ inputs.guards-dir }}' \
+          --workflows-dir '${{ inputs.workflows-dir }}' \
+          --max-ttl-days '${{ inputs.max-ttl-days }}' \
+          --warn-within-days '${{ inputs.warn-within-days }}' \
+          --report '${{ inputs.report-path }}'
+
+    - name: Upload report
+      if: ${{ always() && inputs.upload-report == 'true' && inputs.report-path != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-debt-report-${{ github.job }}
+        path: ${{ inputs.report-path }}
+        if-no-files-found: ignore
+        retention-days: 30

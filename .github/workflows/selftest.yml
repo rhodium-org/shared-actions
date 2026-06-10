@@ -109,3 +109,64 @@ jobs:
       - name: Confirm gate worked
         if: steps.cve.outcome == 'failure'
         run: echo "OK — gate correctly blocked the sentinel-CVE fixture."
+
+  security-policy-meta-guards:
+    name: security-policy-check — meta-guards
+    runs-on: [self-hosted, org, linux, docker]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: python -m pip install --quiet 'pyyaml>=6,<7'
+
+      # Fixtures are generated at runtime with relative dates so the
+      # selftest's own expiries never rot — the framework must not be
+      # vulnerable to the rot it polices.
+      - name: Assert meta-guards pass/fail correctly
+        shell: bash
+        run: |
+          set -uo pipefail
+          CHECK="actions/security-policy-check/check.py"
+          OK_DATE=$(date -d "+30 days" +%Y-%m-%d)
+          SOON_DATE=$(date -d "+5 days" +%Y-%m-%d)
+          PAST_DATE=$(date -d "-3 days" +%Y-%m-%d)
+          FAR_DATE=$(date -d "+400 days" +%Y-%m-%d)
+          fails=0
+          run() {  # run <expected-exit> <label>
+            local want="$1" label="$2"
+            python "$CHECK" --policy fix.yaml --guards-dir none --report /dev/null \
+              >/tmp/out 2>&1
+            local got=$?
+            if [ "$got" != "$want" ]; then
+              echo "::error::[$label] expected exit $want, got $got"; cat /tmp/out
+              fails=$((fails+1))
+            else
+              echo "OK [$label] exit=$got"
+            fi
+          }
+
+          printf 'vulnerabilities:\n  - id: CVE-1\n    statement: "safe — not reachable"\n    expired_at: %s\n' "$OK_DATE" > fix.yaml
+          run 0 "clean"
+
+          printf 'vulnerabilities:\n  - id: CVE-1\n    statement: "soon"\n    expired_at: %s\n' "$SOON_DATE" > fix.yaml
+          run 0 "expiring-soon (warn, not fail)"
+
+          printf 'vulnerabilities:\n  - id: CVE-1\n' > fix.yaml
+          run 1 "naked"
+
+          printf 'vulnerabilities:\n  - id: CVE-1\n    statement: "x"\n    expired_at: %s\n' "$PAST_DATE" > fix.yaml
+          run 1 "expired"
+
+          printf 'vulnerabilities:\n  - id: CVE-1\n    statement: "forever"\n    expired_at: %s\n' "$FAR_DATE" > fix.yaml
+          run 1 "over-ttl"
+
+          if [ "$fails" -ne 0 ]; then
+            echo "::error::SELFTEST REGRESSION — $fails meta-guard scenario(s) wrong."
+            exit 1
+          fi
+          echo "All security-policy meta-guard scenarios behaved correctly."
