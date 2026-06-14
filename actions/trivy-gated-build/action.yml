@@ -33,6 +33,16 @@ inputs:
     description: 'Trivy severities that fail the gate.'
     required: false
     default: 'CRITICAL,HIGH'
+  vuln-type:
+    description: >-
+      Trivy vulnerability classes to scan (CSV of os,library). Default
+      'os,library' is right for deployable app images. Set 'os' for BASE
+      images (shared-actions/base-images): a base legitimately carries build
+      tooling (e.g. node's bundled npm) whose library CVEs the consumer strips
+      in its runtime stage and re-gates on os,library in its own final image —
+      so the base's job is only to prove its OS layer is patched.
+    required: false
+    default: 'os,library'
   trivyignore-path:
     description: 'Path to .trivyignore file (relative to repo root). Silently skipped if the file is absent.'
     required: false
@@ -206,7 +216,7 @@ runs:
         severity: ${{ inputs.severity }}
         exit-code: '1'
         ignore-unfixed: true
-        vuln-type: 'os,library'
+        vuln-type: ${{ inputs.vuln-type }}
         trivyignores: ${{ steps.vars.outputs.trivyignores }}
         timeout: ${{ inputs.trivy-timeout }}
 

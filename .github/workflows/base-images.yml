@@ -64,6 +64,10 @@ jobs:
           context: base-images/${{ matrix.family }}/${{ matrix.tag }}
           dockerfile: base-images/${{ matrix.family }}/${{ matrix.tag }}/Dockerfile
           tags: ghcr.io/rhodium-org/base-${{ matrix.family }}:${{ matrix.tag }}
+          # A base image legitimately carries build tooling (node's bundled npm,
+          # whose library CVEs consumers strip in their runtime stage). Gate the
+          # base on its actual responsibility — a patched OS layer.
+          vuln-type: os
           # Per-tag cache so the matrix legs (same package, different tags)
           # don't clobber each other's buildcache ref.
           cache-image: ghcr.io/rhodium-org/base-${{ matrix.family }}:buildcache-${{ matrix.tag }}
