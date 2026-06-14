@@ -1,110 +1,24 @@
+# MANAGED BY cluster-opentofu — do not edit by hand.
+# Drift is reconciled by Flux tofu-controller. To change the baseline,
+# change the reusable workflow in rhodium-org/shared-actions, or this
+# caller template in cluster-opentofu/files/.
 name: security-baseline
 
-# Reusable security baseline — the uniform, repo-agnostic security checks
-# every rhodium-org repo should run. Distributed to all repos as a tiny
-# caller by the cluster-opentofu file fan-out, so a greenfield repo
-# inherits it with zero per-repo configuration.
-#
-# Caller (what lands in each repo's .github/workflows/security-baseline.yml):
-#
-#   name: security-baseline
-#   on:
-#     push: { branches: [main] }
-#     pull_request: { branches: [main] }
-#     schedule: [{ cron: "23 6 * * *" }]   # daily: trips red the day a suppression expires
-#   jobs:
-#     baseline:
-#       uses: rhodium-org/shared-actions/.github/workflows/security-baseline.yml@v1
-#
-# It auto-discovers every .trivyignore.yaml in the repo and runs the
-# suppression-policy meta-guard on each. No inputs required; repos with no
-# suppressions pass trivially.
-
 on:
-  workflow_call:
-    inputs:
-      max-ttl-days:
-        description: 'Max days a suppression may be set to expire out.'
-        type: number
-        required: false
-        default: 90
-      warn-within-days:
-        description: 'Expiry window that warns rather than fails.'
-        type: number
-        required: false
-        default: 14
-      runs-on:
-        description: 'Runner label JSON. Default self-hosted org pool.'
-        type: string
-        required: false
-        default: '["self-hosted", "org", "linux", "docker"]'
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Daily — trips the repo red the day a suppression expires, with no
+    # human action. Off-peak, off the top-of-hour rush.
+    - cron: "23 6 * * *"
+  workflow_dispatch:
 
 jobs:
-  discover-policies:
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
-    outputs:
-      policies: ${{ steps.find.outputs.policies }}
-      count: ${{ steps.find.outputs.count }}
-    steps:
-      - uses: actions/checkout@v5
-      - id: find
-        shell: bash
-        run: |
-          # Every .trivyignore.yaml, any depth, excluding vendored trees.
-          find . -name '.trivyignore.yaml' \
-            -not -path '*/node_modules/*' \
-            -not -path '*/.venv/*' \
-            -not -path '*/.git/*' \
-            2>/dev/null | sed 's|^\./||' | sort > /tmp/policies.txt
-          # Build the matrix JSON robustly (no jq dependency). Empty → "[]".
-          python3 - <<'PY'
-          import json, os
-          files = [l.strip() for l in open('/tmp/policies.txt') if l.strip()]
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
-              fh.write('policies=' + json.dumps(files) + '\n')
-              fh.write('count=' + str(len(files)) + '\n')
-          print(f'Discovered {len(files)} policy file(s): {files}')
-          PY
-
-  policy-check:
-    needs: discover-policies
-    if: needs.discover-policies.outputs.count != '0'
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
-    strategy:
-      fail-fast: false
-      matrix:
-        policy: ${{ fromJSON(needs.discover-policies.outputs.policies) }}
-    steps:
-      - uses: actions/checkout@v5
-      - id: paths
-        shell: bash
-        run: |
-          # Guards live next to the policy by convention: <policy-dir>/ci-guards.
-          dir="$(dirname '${{ matrix.policy }}')"
-          echo "guards=${dir%/.}/ci-guards" | sed 's|\./ci-guards|ci-guards|' >> "$GITHUB_OUTPUT"
-      - name: Suppression-policy meta-guard
-        uses: rhodium-org/shared-actions/actions/security-policy-check@v1
-        with:
-          policy: ${{ matrix.policy }}
-          guards-dir: ${{ steps.paths.outputs.guards }}
-          max-ttl-days: ${{ inputs.max-ttl-days }}
-          warn-within-days: ${{ inputs.warn-within-days }}
-
-  # Always-green summary job so callers can use a single required status
-  # check ("security-baseline / baseline") regardless of policy count.
   baseline:
-    needs: [discover-policies, policy-check]
-    if: always()
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
-    steps:
-      - name: Roll up
-        shell: bash
-        run: |
-          pc='${{ needs.policy-check.result }}'
-          echo "discovered=${{ needs.discover-policies.outputs.count }} policy-check=${pc}"
-          # policy-check is 'skipped' when there are no policies — that's a pass.
-          if [ "$pc" = "failure" ]; then
-            echo "::error::security baseline failed — suppression policy violation(s). See the policy-check job."
-            exit 1
-          fi
-          echo "security baseline OK"
+    # Reusable lives at security-baseline-reusable.yml (NOT security-baseline.yml):
+    # this caller is fanned out to security-baseline.yml in every repo INCLUDING
+    # shared-actions, so the reusable must sit on a different filename or the
+    # fan-out clobbers it with a self-referential call (the 2026-06-14 outage).
+    uses: rhodium-org/shared-actions/.github/workflows/security-baseline-reusable.yml@v1
