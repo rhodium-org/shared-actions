@@ -1,0 +1,72 @@
+name: base-images
+
+# Golden hardened base images for the rhodium-org fleet.
+#
+# Each image is upstream <family>:<tag> + `apk upgrade` so OS-layer security
+# patches (openssl/libcrypto3, etc.) land in ONE place and fan out to ~50
+# consumers via a single Renovate digest bump — instead of an `apk upgrade`
+# line copy-pasted into every app Dockerfile.
+#
+# Built through our OWN Trivy gate (dogfooding trivy-gated-build): if `apk
+# upgrade` can't clear a fixable HIGH/CRITICAL, this workflow goes red and the
+# stale base never publishes — exactly the guarantee we give consumers.
+#
+# Published PUBLIC (one-time package-visibility flip, see base-images/README.md)
+# so app PR builds — which skip docker-login by design — can pull the base
+# anonymously. A private base would 401 on every Renovate PR build.
+#
+# Rebuilt daily so a newly-published Alpine patch (or a new CVE the daily
+# Trivy DB refresh surfaces) is picked up within ~24h without human action.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'base-images/**'
+      - '.github/workflows/base-images.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'base-images/**'
+      - '.github/workflows/base-images.yml'
+  workflow_dispatch:
+  schedule:
+    # Daily at 03:42 UTC — off the top-of-hour rush; picks up Alpine patches.
+    - cron: '42 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: ${{ matrix.family }}:${{ matrix.tag }}
+    runs-on: [self-hosted, org, linux, docker]
+    strategy:
+      # One stale family must not block patching the others.
+      fail-fast: false
+      matrix:
+        include:
+          - { family: node, tag: 18-alpine }
+          - { family: node, tag: 20-alpine }
+          - { family: node, tag: 22-alpine }
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build, scan and publish golden base
+        uses: ./actions/trivy-gated-build
+        with:
+          image-name: ghcr.io/rhodium-org/base-${{ matrix.family }}
+          context: base-images/${{ matrix.family }}/${{ matrix.tag }}
+          dockerfile: base-images/${{ matrix.family }}/${{ matrix.tag }}/Dockerfile
+          tags: ghcr.io/rhodium-org/base-${{ matrix.family }}:${{ matrix.tag }}
+          # Per-tag cache so the matrix legs (same package, different tags)
+          # don't clobber each other's buildcache ref.
+          cache-image: ghcr.io/rhodium-org/base-${{ matrix.family }}:buildcache-${{ matrix.tag }}
+          # Build + scan on PRs; publish only on main / schedule / dispatch.
+          push: ${{ github.event_name != 'pull_request' }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
