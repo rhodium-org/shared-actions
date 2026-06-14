@@ -173,10 +173,14 @@ runs:
         restore-keys: |
           trivy-db-${{ runner.os }}-
 
-    # Log in BEFORE the first build so the registry cache backend can
-    # pull. Skipped on PRs (no write perms anyway, no push at the end).
+    # Log in BEFORE the first build so the registry cache AND any private/
+    # internal base image (e.g. ghcr.io/rhodium-org/base-node) can be pulled.
+    # Runs on PRs too: org policy disables PUBLIC packages, so the golden
+    # bases are INTERNAL — pullable only WITH auth. A tokenless PR build 403s
+    # on the FROM. We authenticate with the GITHUB_TOKEN the caller already
+    # passes; login is read-only here (the push step stays gated on push=true).
     - name: Log in to registry
-      if: inputs.push == 'true'
+      if: inputs.registry-password != ''
       uses: docker/login-action@v3
       with:
         registry: ${{ inputs.registry }}
