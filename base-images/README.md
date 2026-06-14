@@ -33,11 +33,20 @@ specific golden-base digest and bumps it as new builds publish.
 
 ## Published images
 
-| image | upstream |
-|-------|----------|
-| `ghcr.io/rhodium-org/base-node:18-alpine` | `node:18-alpine` |
-| `ghcr.io/rhodium-org/base-node:20-alpine` | `node:20-alpine` |
-| `ghcr.io/rhodium-org/base-node:22-alpine` | `node:22-alpine` |
+Covering every **runtime** (final-stage) Alpine base in the fleet — node servers,
+nginx-served SPAs, and Java JRE runtimes. (Builder-only Alpine stages, e.g. a
+node builder feeding an nginx final stage, don't affect the final scan, so the
+runtime base is what matters.)
+
+| image | upstream | final stage of |
+|-------|----------|----------------|
+| `ghcr.io/rhodium-org/base-node:18-alpine` | `node:18-alpine` | node servers / SSR |
+| `ghcr.io/rhodium-org/base-node:20-alpine` | `node:20-alpine` | node servers / SSR |
+| `ghcr.io/rhodium-org/base-node:22-alpine` | `node:22-alpine` | node servers / MCPs |
+| `ghcr.io/rhodium-org/base-nginx:alpine` | `nginx:alpine` | SPA frontends |
+| `ghcr.io/rhodium-org/base-nginx-unprivileged:alpine` | `nginxinc/nginx-unprivileged:alpine` | SPA frontends (non-root) |
+| `ghcr.io/rhodium-org/base-eclipse-temurin:17-jre-alpine` | `eclipse-temurin:17-jre-alpine` | Java runtimes |
+| `ghcr.io/rhodium-org/base-eclipse-temurin:21-jre-alpine` | `eclipse-temurin:21-jre-alpine` | Java runtimes |
 
 Built and gated by [`.github/workflows/base-images.yml`](../.github/workflows/base-images.yml).
 
@@ -48,12 +57,14 @@ in when `push=true`). So the `FROM` pull on a Renovate PR build is **anonymous**
 — a private base 401s and every PR build fails. The `base-node` package must be
 **public**:
 
-> GitHub → Organizations → rhodium-org → Packages → `base-node` →
+> GitHub → Organizations → rhodium-org → Packages → `<package>` →
 > Package settings → Danger Zone → **Change visibility → Public**
 
-(Free plan has no "internal" visibility, so public is the only option that lets
-`GITHUB_TOKEN` on a PR build pull the base.) This is needed once, after the
-package first publishes.
+…for each base package: `base-node`, `base-nginx`, `base-nginx-unprivileged`,
+`base-eclipse-temurin`. Packages publish as **internal** by default, and an
+anonymous pull of an internal package returns **403** — so a PR build (which
+skips `docker login`) can't pull it until it's public. There is no REST endpoint
+to flip container-package visibility; it must be done in the UI, once per package.
 
 ## Adding a family
 

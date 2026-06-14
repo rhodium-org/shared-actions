@@ -54,6 +54,10 @@ jobs:
           - { family: node, tag: 18-alpine }
           - { family: node, tag: 20-alpine }
           - { family: node, tag: 22-alpine }
+          - { family: nginx, tag: alpine }
+          - { family: nginx-unprivileged, tag: alpine }
+          - { family: eclipse-temurin, tag: 17-jre-alpine }
+          - { family: eclipse-temurin, tag: 21-jre-alpine }
     steps:
       - uses: actions/checkout@v5
 
