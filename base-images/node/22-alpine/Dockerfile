@@ -17,6 +17,6 @@
 #
 #   Rebuilt daily by .github/workflows/base-images.yml and published PUBLIC so
 #   PR builds (which skip docker-login) can pull it anonymously.
-FROM public.ecr.aws/docker/library/node:22-alpine
+FROM public.ecr.aws/docker/library/node:22-alpine@sha256:ab07539e0988b63558ff621f5fbe1077054c39d9809112974fb79993949d41cd
 
 RUN apk upgrade --no-cache
