@@ -59,7 +59,7 @@ jobs:
           - { family: eclipse-temurin, tag: 17-jre-alpine }
           - { family: eclipse-temurin, tag: 21-jre-alpine }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Build, scan and publish golden base
         uses: ./actions/trivy-gated-build

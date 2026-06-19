@@ -158,7 +158,7 @@ runs:
           echo "trivyignores=" >> "$GITHUB_OUTPUT"
         fi
 
-    - uses: docker/setup-buildx-action@v3
+    - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       with:
         driver-opts: network=host
 
@@ -166,7 +166,7 @@ runs:
     # restore-keys fallback finds the most-recent previous DB. Trivy's
     # DB is ~50 MB and refreshes every 6 h; caching it cuts ~20-30 s.
     - name: Cache Trivy DB
-      uses: actions/cache@v5
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
       with:
         path: ~/.cache/trivy
         key: trivy-db-${{ runner.os }}-${{ github.run_id }}
@@ -181,7 +181,7 @@ runs:
     # passes; login is read-only here (the push step stays gated on push=true).
     - name: Log in to registry
       if: inputs.registry-password != ''
-      uses: docker/login-action@v3
+      uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
       with:
         registry: ${{ inputs.registry }}
         username: ${{ inputs.registry-username }}
@@ -192,7 +192,7 @@ runs:
     # job fails here and the push step below never runs.
     - id: build
       name: Build (load only — scan target)
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}
@@ -229,7 +229,7 @@ runs:
     - id: push
       name: Push (only on scan-pass)
       if: inputs.push == 'true' && inputs.tags != ''
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}
