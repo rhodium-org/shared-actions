@@ -14,23 +14,28 @@ script is the enforcement spine: it makes suppressions liabilities with a
 mandatory, bounded TTL and a justification — never permanent, never naked —
 so security debt converges instead of accumulating.
 
-POLICY (image / OS-layer suppressions, the only kind allowed)
--------------------------------------------------------------
-Suppressions live in Trivy's native `.trivyignore.yaml`. Each entry MUST:
+POLICY (which suppressions are allowed)
+---------------------------------------
+This guard validates ANY suppression file passed via --policy with the
+schema `vulnerabilities: [{id, statement, expired_at}]`. Two files use it:
+  * `.trivyignore.yaml`     — image / OS-layer CVEs (Trivy-native).
+  * `.pip-audit-ignore.yaml`— UNFIXABLE app-dep CVEs only (no upstream fix).
+Each entry MUST:
   * have a non-empty `statement` (why it's safe / what we're waiting on)
   * have an `expired_at` date
   * expire no further out than today + --max-ttl-days (no "forever")
-  * not already be expired (Trivy stops honouring it; we fail loudly with
+  * not already be expired (the gate stops honouring it; we fail loudly with
     an actionable message rather than letting the CVE silently resurface)
 
 A legacy flat `.trivyignore` with bare CVE lines is a hard failure: bare
 lines carry no justification and no expiry, which is the exact rot we are
 designing out.
 
-App-dependency CVEs (pip/npm/maven) are deliberately NOT suppressible here
-— they almost always have a fix, so the policy is bump-or-fail. Keeping
-them out of the suppression store is what makes the store small enough to
-manage.
+*Fixable* app-dependency CVEs (pip/npm/maven) are still NOT suppressible —
+a bump exists, so the policy is bump-or-fail. The ONLY app-dep entries that
+belong in `.pip-audit-ignore.yaml` are CVEs with no published fix AND a
+recorded functional-exposure check showing the app never reaches the
+vulnerable code path. See shared-actions/SECURITY-DEBT.md ("Three lanes").
 
 GUARDS
 ------

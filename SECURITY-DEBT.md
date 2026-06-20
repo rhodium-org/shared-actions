@@ -10,20 +10,33 @@ This is the operating manual. The mechanisms live in
 `security_repo_*` gauges in `ci-metrics-exporter`, and the Grafana
 "Security Debt" dashboard.
 
-## Two regimes
+## Three lanes
 
-Triage by where a fix can come from, because the economics differ:
+Triage by where a fix can come from, because the economics differ. The
+overwhelmingly common app-dep case is "a bump exists" — so the default there
+stays bump-or-fail. The two exceptions (an app dep with *no* upstream fix, and
+the OS layer) share the same time-boxed-suppression machinery.
 
-| | App deps (pip / npm / maven) | Image / OS layer (Alpine / Debian) |
-|---|---|---|
-| Fix availability | Almost always a bump exists | Often `fix_deferred` upstream — no fix yet |
-| **Default action** | **bump-or-fail — suppressions disallowed** | **time-boxed suppression in `.trivyignore.yaml`** |
-| Where suppressions live | nowhere (forbidden) | `.trivyignore.yaml`, Trivy-native |
-| Human pulled in when | the bump breaks tests | a suppression nears expiry, still no upstream fix |
+| | Fixable app dep (pip / npm / maven) | **Unfixable app dep** (no upstream fix yet) | Image / OS layer (Alpine / Debian) |
+|---|---|---|---|
+| Fix availability | a bump exists | none published (e.g. torch CVE-2025-3000) | often `fix_deferred` upstream |
+| **Default action** | **bump-or-fail — suppressions disallowed** | **time-boxed suppression in `.pip-audit-ignore.yaml`** | **time-boxed suppression in `.trivyignore.yaml`** |
+| Where suppressions live | nowhere (forbidden) | `.pip-audit-ignore.yaml` (same schema, policy-checked) | `.trivyignore.yaml`, Trivy-native |
+| Extra gate before suppressing | n/a — just bump | **functional-exposure check**: confirm the app never reaches the vulnerable code path (statement records the evidence) | reachability noted in `statement` |
+| Human pulled in when | the bump breaks tests | a suppression nears expiry, still no upstream fix | a suppression nears expiry, still no upstream fix |
 
-Keeping app-dep CVEs out of the suppression store is what keeps the store
-small enough to manage. You can always bump a library; you cannot always
-bump libxml2.
+Keeping *fixable* app-dep CVEs out of the suppression store is what keeps the
+store small enough to manage — you can always bump a library, so refusing to
+suppress costs nothing. But "you can always bump a library" is not literally
+always true: a transitive dep can carry a CVE with **no patched release**
+(torch `torch.jit.script` CVE-2025-3000, no fix as of 2026-06). Under
+bump-or-fail that PR sits red forever — the exact rot this system exists to
+kill. So the unfixable case is admitted to the suppression regime under
+*stricter* terms than the OS layer: it additionally requires a recorded
+**functional-exposure check** (we only suppress when the app never invokes the
+vulnerable API), and it auto-expires like every other suppression so it cannot
+become permanent. The moment a fix ships, the dead-suppression sweep (and
+Renovate's OSV alerts) surface it for removal → bump.
 
 ## The lifecycle of an image-layer suppression
 
@@ -42,6 +55,32 @@ bump libxml2.
    suppression cannot rot silently.
 5. The fleet aggregator surfaces it on the dashboard the whole time
    (`min_days_to_expiry`, `expiring_soon`, `expired`).
+
+## The lifecycle of an unfixable app-dep suppression
+
+Identical machinery, one extra gate up front. Use ONLY when `pip-audit`
+reports a CVE whose **Fix Versions column is empty** (no patched release).
+
+1. `pip-audit` fails on a CVE with no fix version.
+2. **Functional-exposure check** (the extra gate): confirm the app never
+   reaches the vulnerable code path — e.g. grep for the vulnerable API
+   (`torch.jit` for CVE-2025-3000) and confirm it is unused, and that the dep
+   is transitive. If the app IS exposed, do NOT suppress — pin down, refactor
+   off the path, or hold. Record the evidence in the `statement`.
+3. Add an entry to `.pip-audit-ignore.yaml` (same schema as `.trivyignore.yaml`):
+   ```yaml
+   vulnerabilities:
+     - id: CVE-2025-3000
+       package: torch                       # informational
+       statement: "torch.jit.script memory corruption (CVSS 4.8, local-user). No upstream fix. torch is transitive; app never calls torch.jit — not functionally exposed (verified 2026-06-20)."
+       expired_at: 2026-09-18   # <= today + 90 days
+   ```
+4. The `pip-audit` step feeds `--ignore-vuln <id>` for each **non-expired**
+   entry only; on the expiry date the entry stops being passed, the gate
+   re-fails, and `security-policy-check --policy .pip-audit-ignore.yaml` names
+   the lapse. The suppression cannot rot silently.
+5. The dead-suppression sweep (and Renovate OSV alerts) re-check OSV/PyPI for a
+   published fix; when one appears it proposes removal → Renovate bumps.
 
 ## What runs where
 
