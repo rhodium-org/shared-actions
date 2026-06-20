@@ -54,7 +54,7 @@ jobs:
       policies: ${{ steps.find.outputs.policies }}
       count: ${{ steps.find.outputs.count }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - id: find
         shell: bash
         run: |
@@ -83,7 +83,7 @@ jobs:
       matrix:
         policy: ${{ fromJSON(needs.discover-policies.outputs.policies) }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - id: paths
         shell: bash
         run: |
