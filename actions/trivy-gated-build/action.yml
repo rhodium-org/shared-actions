@@ -181,7 +181,7 @@ runs:
     # passes; login is read-only here (the push step stays gated on push=true).
     - name: Log in to registry
       if: inputs.registry-password != ''
-      uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
       with:
         registry: ${{ inputs.registry }}
         username: ${{ inputs.registry-username }}
