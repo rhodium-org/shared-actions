@@ -166,7 +166,7 @@ runs:
     # restore-keys fallback finds the most-recent previous DB. Trivy's
     # DB is ~50 MB and refreshes every 6 h; caching it cuts ~20-30 s.
     - name: Cache Trivy DB
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.cache/trivy
         key: trivy-db-${{ runner.os }}-${{ github.run_id }}
