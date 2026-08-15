@@ -114,6 +114,9 @@ outputs:
   scan-tag:
     description: 'Local image tag used for the Trivy scan.'
     value: ${{ steps.vars.outputs.scan_tag }}
+  image-size-bytes:
+    description: 'Uncompressed size of the built image in bytes, as reported by the local daemon. Reporting only — nothing gates on it.'
+    value: ${{ steps.size.outputs.image-size-bytes }}
 
 runs:
   using: composite
@@ -208,6 +211,26 @@ runs:
           type=gha
         cache-to: type=gha,mode=max
         secrets: ${{ inputs.build-secrets }}
+
+    # Observability only — continue-on-error means this can NEVER fail a build.
+    # Placed between build and scan so an image that goes on to fail the gate
+    # still gets its size reported; the gate stays the last thing before push.
+    - id: size
+      name: Report image size
+      shell: bash
+      continue-on-error: true
+      run: |
+        bytes=$(docker image inspect "${{ steps.vars.outputs.scan_tag }}" --format '{{.Size}}')
+        echo "image-size-bytes=${bytes}" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Image size — \`${{ inputs.image-name }}\`"
+          echo ""
+          echo "**$(numfmt --to=iec --suffix=B "${bytes}")** (${bytes} bytes)"
+          echo ""
+          echo "Uncompressed size as the local daemon reports it, which is what"
+          echo "the kubelet accounts for on the node — not the compressed"
+          echo "registry transfer size."
+        } >> "$GITHUB_STEP_SUMMARY"
 
     # THE GATE. exit-code: '1' fails the job. ignore-unfixed: true so
     # we only fail on CVEs we can act on (base-image bumps for

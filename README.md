@@ -11,6 +11,13 @@ images and `[self-hosted, org, linux, docker]` runners.
 | [`actions/trivy-gated-build`](actions/trivy-gated-build) | Build a Docker image, gate on Trivy HIGH/CRITICAL fixable CVEs, push only on scan-pass. CVE-laden images never reach the registry. Foundation for [cluster#67] platform-wide remediation. |
 | [`actions/security-policy-check`](actions/security-policy-check) | Meta-guard for CVE-suppression hygiene: fails CI on naked / expired / over-TTL suppressions and orphan guards; emits a JSON report for fleet monitoring. The self-managing spine — suppressions become time-boxed liabilities, never permanent. |
 
+## Standards
+
+- [`DOCKERFILE-STANDARD.md`](DOCKERFILE-STANDARD.md) — how to write an image that
+  stays small, with the in-house reference implementation for each stack.
+- [`base-images/`](base-images) — golden hardened runtime bases
+  (`ghcr.io/rhodium-org/base-*`), rebuilt daily with OS patches applied.
+
 ## Versioning
 
 - `@v1` — current major. Breaking changes will move to `@v2`.

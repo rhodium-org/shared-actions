@@ -47,6 +47,28 @@ runtime base is what matters.)
 | `ghcr.io/rhodium-org/base-nginx-unprivileged:alpine` | `nginxinc/nginx-unprivileged:alpine` | SPA frontends (non-root) |
 | `ghcr.io/rhodium-org/base-eclipse-temurin:17-jre-alpine` | `eclipse-temurin:17-jre-alpine` | Java runtimes |
 | `ghcr.io/rhodium-org/base-eclipse-temurin:21-jre-alpine` | `eclipse-temurin:21-jre-alpine` | Java runtimes |
+| `ghcr.io/rhodium-org/base-python:3.12-slim` | `python:3.12-slim` | Python runtimes |
+| `ghcr.io/rhodium-org/base-python:3.13-slim` | `python:3.13-slim` | Python runtimes |
+| `ghcr.io/rhodium-org/base-python:3.14-slim` | `python:3.14-slim` | Python runtimes |
+
+### The Python family is Debian, not Alpine
+
+Every Python image in the fleet is `python:*-slim`, and it has to stay that way:
+musl has no manylinux wheels, so an Alpine base would make numpy/torch/docling
+consumers compile from source. So this family runs `apt-get upgrade` where the
+others run `apk upgrade`.
+
+It also does something the Alpine families don't — a `pip install
+--force-reinstall` of `pip`, `setuptools` and `wheel`. `python:*-slim` ships
+those in `site-packages` with their own CVE history, and Trivy's METADATA scan
+finds the `.dist-info` dirs in the *consumer's* runtime stage. A plain
+`--upgrade` leaves the stale `.dist-info` sibling behind and Trivy still reports
+it. This was previously copy-pasted per app (see `agentic-rag/backend/Dockerfile`).
+
+Caveat that survives the golden base: if a consumer runs further `pip`
+operations that pull old transitive versions back in (`opentelemetry-bootstrap`
+is the known offender), it must repeat the `--force-reinstall` as the **last**
+pip step of its own build.
 
 Built and gated by [`.github/workflows/base-images.yml`](../.github/workflows/base-images.yml).
 
@@ -61,7 +83,7 @@ in when `push=true`). So the `FROM` pull on a Renovate PR build is **anonymous**
 > Package settings → Danger Zone → **Change visibility → Public**
 
 …for each base package: `base-node`, `base-nginx`, `base-nginx-unprivileged`,
-`base-eclipse-temurin`. Packages publish as **internal** by default, and an
+`base-eclipse-temurin`, `base-python`. Packages publish as **internal** by default, and an
 anonymous pull of an internal package returns **403** — so a PR build (which
 skips `docker login`) can't pull it until it's public. There is no REST endpoint
 to flip container-package visibility; it must be done in the UI, once per package.
@@ -69,6 +91,5 @@ to flip container-package visibility; it must be done in the UI, once per packag
 ## Adding a family
 
 Add a `base-images/<family>/<tag>/Dockerfile` (two lines: `FROM upstream` +
-`RUN apk upgrade --no-cache`) and a matrix row in `base-images.yml`. Candidates
-already in the fleet: `nginx`/`nginx-unprivileged:*-alpine`,
-`eclipse-temurin:{17,21}-jre-alpine`.
+`RUN apk upgrade --no-cache`, or the Debian equivalent) and a matrix row in
+`base-images.yml`.

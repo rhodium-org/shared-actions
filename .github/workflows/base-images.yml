@@ -2,10 +2,11 @@ name: base-images
 
 # Golden hardened base images for the rhodium-org fleet.
 #
-# Each image is upstream <family>:<tag> + `apk upgrade` so OS-layer security
-# patches (openssl/libcrypto3, etc.) land in ONE place and fan out to ~50
-# consumers via a single Renovate digest bump — instead of an `apk upgrade`
-# line copy-pasted into every app Dockerfile.
+# Each image is upstream <family>:<tag> + an OS package upgrade (`apk upgrade`
+# on Alpine, `apt-get upgrade` on the Debian-based python family) so OS-layer
+# security patches (openssl/libcrypto3, etc.) land in ONE place and fan out to
+# ~50 consumers via a single Renovate digest bump — instead of that line
+# copy-pasted into every app Dockerfile.
 #
 # Built through our OWN Trivy gate (dogfooding trivy-gated-build): if `apk
 # upgrade` can't clear a fixable HIGH/CRITICAL, this workflow goes red and the
@@ -58,6 +59,9 @@ jobs:
           - { family: nginx-unprivileged, tag: alpine }
           - { family: eclipse-temurin, tag: 17-jre-alpine }
           - { family: eclipse-temurin, tag: 21-jre-alpine }
+          - { family: python, tag: 3.12-slim }
+          - { family: python, tag: 3.13-slim }
+          - { family: python, tag: 3.14-slim }
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
