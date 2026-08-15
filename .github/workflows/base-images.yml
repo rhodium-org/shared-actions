@@ -79,6 +79,11 @@ jobs:
           # Per-tag cache so the matrix legs (same package, different tags)
           # don't clobber each other's buildcache ref.
           cache-image: ghcr.io/rhodium-org/base-${{ matrix.family }}:buildcache-${{ matrix.tag }}
+          # ...but the patch layer must NOT come from that cache, or the daily
+          # rebuild patches nothing. run_id is unique per run, so the upgrade
+          # re-runs every time while the pinned FROM still comes from cache.
+          build-args: |
+            PATCH_EPOCH=${{ github.run_id }}
           # Build + scan on PRs; publish only on main / schedule / dispatch.
           push: ${{ github.event_name != 'pull_request' }}
           registry-password: ${{ secrets.GITHUB_TOKEN }}

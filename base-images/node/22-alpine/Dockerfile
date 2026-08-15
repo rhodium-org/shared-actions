@@ -19,4 +19,13 @@
 #   PR builds (which skip docker-login) can pull it anonymously.
 FROM public.ecr.aws/docker/library/node:22-alpine@sha256:ab07539e0988b63558ff621f5fbe1077054c39d9809112974fb79993949d41cd
 
-RUN apk upgrade --no-cache
+# Cache-buster, passed as a per-run value by .github/workflows/base-images.yml.
+# Without it BuildKit restores the patch layer below from the registry
+# buildcache — the FROM digest is pinned and the RUN string never changes, so
+# the cache key is stable forever and the "rebuilt daily with OS patches" that
+# every consumer relies on silently stops happening. Verified 2026-08-15: the
+# eclipse-temurin legs had been serving a June package set for weeks, logging
+# `RUN apk upgrade --no-cache` / `CACHED` on every scheduled run. The ARG must
+# be *referenced* by the RUN; merely declaring it does not affect the cache key.
+ARG PATCH_EPOCH
+RUN echo "patch epoch ${PATCH_EPOCH}" && apk upgrade --no-cache

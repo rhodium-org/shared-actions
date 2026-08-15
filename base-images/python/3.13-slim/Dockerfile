@@ -2,7 +2,11 @@
 # Python toolchain patched. See the 3.12-slim sibling for the full rationale.
 FROM public.ecr.aws/docker/library/python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a
 
-RUN apt-get update \
+# Cache-buster — without it the patch layer below is restored from the registry
+# buildcache and never actually re-runs. See base-images/node/22-alpine.
+ARG PATCH_EPOCH
+RUN echo "patch epoch ${PATCH_EPOCH}" \
+    && apt-get update \
     && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 

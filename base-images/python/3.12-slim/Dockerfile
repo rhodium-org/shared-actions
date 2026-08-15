@@ -15,7 +15,11 @@
 # this as the last pip step of its own build.
 FROM public.ecr.aws/docker/library/python:3.12-slim@sha256:dd29372629eeba2dd003fd9e9d35a5b8236c44727875a0364254b5127af88e65
 
-RUN apt-get update \
+# Cache-buster — without it the patch layer below is restored from the registry
+# buildcache and never actually re-runs. See base-images/node/22-alpine.
+ARG PATCH_EPOCH
+RUN echo "patch epoch ${PATCH_EPOCH}" \
+    && apt-get update \
     && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 

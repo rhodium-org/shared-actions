@@ -6,5 +6,8 @@
 FROM nginxinc/nginx-unprivileged:alpine@sha256:a718212f9cf21e241f14067333000a3f0930292f5354fe0db269e9a2a2596b9e
 
 USER root
-RUN apk upgrade --no-cache
+# Cache-buster — without it the patch layer below is restored from the registry
+# buildcache and never actually re-runs. See base-images/node/22-alpine.
+ARG PATCH_EPOCH
+RUN echo "patch epoch ${PATCH_EPOCH}" && apk upgrade --no-cache
 USER 101

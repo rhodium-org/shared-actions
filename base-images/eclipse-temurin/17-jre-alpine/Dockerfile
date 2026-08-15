@@ -6,4 +6,7 @@
 # os,library gate.) Rebuilt daily; published PUBLIC for anonymous PR pulls.
 FROM public.ecr.aws/docker/library/eclipse-temurin:17-jre-alpine@sha256:b0ae54a36f82e04dc6c45e40ca5c55762e20b9a0858ee457faf557d440a9b571
 
-RUN apk upgrade --no-cache
+# Cache-buster — without it the patch layer below is restored from the registry
+# buildcache and never actually re-runs. See base-images/node/22-alpine.
+ARG PATCH_EPOCH
+RUN echo "patch epoch ${PATCH_EPOCH}" && apk upgrade --no-cache

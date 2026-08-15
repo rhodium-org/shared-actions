@@ -5,4 +5,7 @@
 # for the full rationale. Rebuilt daily; published PUBLIC for anonymous PR pulls.
 FROM public.ecr.aws/docker/library/nginx:alpine@sha256:7068961d45b07b2af510ac002e9daa63a1d3eba2111202d6768798690800fffd
 
-RUN apk upgrade --no-cache
+# Cache-buster — without it the patch layer below is restored from the registry
+# buildcache and never actually re-runs. See base-images/node/22-alpine.
+ARG PATCH_EPOCH
+RUN echo "patch epoch ${PATCH_EPOCH}" && apk upgrade --no-cache
