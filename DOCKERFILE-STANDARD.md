@@ -130,6 +130,19 @@ Dockerfile. That comment is what stops the next person "fixing" it.
 
 ## Measuring
 
+**There are two different numbers and they are not comparable.** Check which one
+you are holding before quoting a win:
+
+| Source | Basis | Example (`gpu-node-agent`) |
+|---|---|---|
+| `docker image inspect --format '{{.Size}}'`, and the CI summary | uncompressed, on-disk | 850 MB |
+| kubelet `.status.images[].sizeBytes` | compressed layers + config | 202 MB |
+
+Verified 2026-08-15: the compressed layer sum from the registry manifest was
+211,711,129 bytes against the kubelet's 211,729,355 — the 18 KB gap is the config
+blob. Compression ratio varies hugely by content (CUDA libraries squeeze ~4x,
+an already-compressed JAR barely at all), so you cannot convert between them.
+
 CI reports each built image's size to the workflow summary via
 [`actions/trivy-gated-build`](actions/trivy-gated-build). Nothing fails on size —
 it is there so growth is visible before it becomes 6 GB.

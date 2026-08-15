@@ -227,9 +227,11 @@ runs:
           echo ""
           echo "**$(numfmt --to=iec --suffix=B "${bytes}")** (${bytes} bytes)"
           echo ""
-          echo "Uncompressed size as the local daemon reports it, which is what"
-          echo "the kubelet accounts for on the node — not the compressed"
-          echo "registry transfer size."
+          echo "Uncompressed, as the local daemon reports it. The kubelet's"
+          echo "\`.status.images[].sizeBytes\` counts *compressed* layers, so it"
+          echo "reads far lower — gpu-node-agent measured 850MB here and 202MB"
+          echo "there. Track this number against itself over time; do not diff"
+          echo "it against a kubectl figure."
         } >> "$GITHUB_STEP_SUMMARY"
 
     # THE GATE. exit-code: '1' fails the job. ignore-unfixed: true so
