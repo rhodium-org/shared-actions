@@ -90,6 +90,33 @@ Two lessons:
 Model weights are fetched at runtime into a mounted `MODEL_CACHE_DIR`. Never
 bake weights into an image to "make it self-contained".
 
+## When the Trivy gate flags a package you never installed
+
+Package managers vendor their own dependencies, and Trivy scans them. Before
+treating a finding as yours, **check the path**:
+
+- `usr/local/lib/python3.*/site-packages/pip/_vendor/…` — pip's vendored tree.
+  Trivy reads `pip/_vendor/vendor.txt`, so every image carrying pip inherits a
+  CVE feed for packages nothing can import and you cannot upgrade independently.
+- `usr/local/lib/node_modules/npm/…` — the bundled npm CLI, not your deps.
+  Confirm with `npm ls <pkg>` plus the lockfile; both empty means it isn't yours.
+
+Neither is suppressible in good conscience and neither needs to exist in a
+runtime stage — so delete the tool rather than ignoring the CVE:
+
+```dockerfile
+RUN rm -rf /usr/local/lib/python3.*/site-packages/pip \
+           /usr/local/lib/python3.*/site-packages/pip-*.dist-info \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.*
+```
+
+This is the one case where a late `rm` is right despite not shrinking the image:
+Trivy scans the flattened filesystem, so a deleted file is not scanned. To
+recover the space too, do the removal in the stage you `COPY --from`.
+
+Note the `base-python` images deliberately **keep** pip — they are bases that
+downstream builders install with. Strip it in your runtime stage, not upstream.
+
 ## What is deliberately exempt
 
 Not every large image is a defect. Two current examples:
