@@ -94,6 +94,7 @@ jobs:
 | `registry-username` | `${{ github.actor }}`| |
 | `registry-password` | (empty)              | Required when `push=true`. Usually `secrets.GITHUB_TOKEN`. |
 | `cache-image`       | `<image-name>:buildcache` | Override only if you want a separate cache namespace. |
+| `gha-cache`         | `true`               | Set `'false'` for images over ~10 GB. See [Cache sizing](#cache-sizing). |
 | `provenance`        | `true`               | Pass-through. |
 | `sbom`              | `true`               | Pass-through. |
 
@@ -101,6 +102,33 @@ jobs:
 
 - `digest` — pushed image digest (empty when `push=false` or `tags` empty)
 - `scan-tag` — local tag used for the Trivy scan
+
+## Cache sizing
+
+Two caches are written by default: a registry cache (`<image>:buildcache` on
+GHCR) and the GitHub Actions cache (`type=gha`).
+
+**The GHA cache is capped at 10 GB per repository.** A `mode=max` export of an
+image larger than that cannot fit, so the export runs to completion, the entry
+is evicted, and the next run gets no hit and pays the full export again. It is
+pure cost with no upside, and it is invisible: the step succeeds.
+
+Measured on `skyreels-v3-backend` (~18 GB of CUDA and torch) — a 71-minute job,
+broken down:
+
+| Phase | Time |
+|---|---|
+| Actual `docker build` | 5m30s |
+| Export layers to OCI | 3m24s |
+| Load tarball into the local daemon (`load: true`, needed for the scan) | 2m54s |
+| **Export to GitHub Actions Cache** | **59m** |
+
+Setting `gha-cache: 'false'` drops `type=gha` from both `cache-from` and
+`cache-to` on both builds. The registry cache has no size cap and actually
+persists, so nothing is lost.
+
+Rule of thumb: if the image is over ~8 GB, or the job log shows
+`exporting to GitHub Actions Cache` taking minutes, turn it off.
 
 ## Guarding suppressions
 

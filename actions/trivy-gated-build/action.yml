@@ -98,6 +98,20 @@ inputs:
     description: 'Image:tag used as the registry buildcache. Defaults to <image-name>:buildcache.'
     required: false
     default: ''
+  gha-cache:
+    description: >-
+      Whether to use the GitHub Actions cache (`type=gha`) alongside the
+      registry cache. Set 'false' for LARGE images: the GHA cache is capped
+      at 10 GB per REPOSITORY, so a `mode=max` export of an image bigger
+      than that spends the upload time and is then evicted — every
+      subsequent run pays the export cost again and never gets a hit.
+      Measured on skyreels-v3-backend (~18 GB): 59 minutes of a 71-minute
+      job was `exporting to GitHub Actions Cache`, for zero cache hits.
+      The registry cache has no such cap and survives, so 'false' loses
+      nothing. Default 'true' — normal-sized images fit and the GHA cache
+      is faster than a registry round-trip.
+    required: false
+    default: 'true'
   provenance:
     description: 'Pass-through to docker/build-push-action provenance.'
     required: false
@@ -151,6 +165,31 @@ runs:
           cache_image="${{ inputs.image-name }}:buildcache"
         fi
         echo "cache_image=${cache_image}" >> "$GITHUB_OUTPUT"
+
+        # Resolve the cache specs here rather than inline in the build steps:
+        # they are multi-line and conditional, and a `with:` value cannot be
+        # dropped from the map by an expression — only emptied. Empty is fine
+        # for cache-from/cache-to (buildx treats it as "none"), but building
+        # the lists in shell keeps the two builds readable and identical.
+        #
+        # The scan build never writes the registry cache: it is the same layer
+        # graph as the push build, which does, so exporting twice would double
+        # the upload for nothing.
+        {
+          echo "cache_from<<EOF_CF"
+          echo "type=registry,ref=${cache_image}"
+          if [ "${{ inputs.gha-cache }}" = "true" ]; then echo "type=gha"; fi
+          echo "EOF_CF"
+
+          echo "cache_to_scan<<EOF_CTS"
+          if [ "${{ inputs.gha-cache }}" = "true" ]; then echo "type=gha,mode=max"; fi
+          echo "EOF_CTS"
+
+          echo "cache_to_push<<EOF_CTP"
+          echo "type=registry,ref=${cache_image},mode=max"
+          if [ "${{ inputs.gha-cache }}" = "true" ]; then echo "type=gha,mode=max"; fi
+          echo "EOF_CTP"
+        } >> "$GITHUB_OUTPUT"
 
         # trivy-action errors hard if trivyignores points at a missing
         # file. Resolve to empty if the path doesn't exist.
@@ -206,10 +245,8 @@ runs:
         tags: ${{ steps.vars.outputs.scan_tag }}
         labels: ${{ inputs.labels }}
         build-args: ${{ inputs.build-args }}
-        cache-from: |
-          type=registry,ref=${{ steps.vars.outputs.cache_image }}
-          type=gha
-        cache-to: type=gha,mode=max
+        cache-from: ${{ steps.vars.outputs.cache_from }}
+        cache-to: ${{ steps.vars.outputs.cache_to_scan }}
         secrets: ${{ inputs.build-secrets }}
 
     # Observability only — continue-on-error means this can NEVER fail a build.
@@ -264,12 +301,8 @@ runs:
         tags: ${{ inputs.tags }}
         labels: ${{ inputs.labels }}
         build-args: ${{ inputs.build-args }}
-        cache-from: |
-          type=registry,ref=${{ steps.vars.outputs.cache_image }}
-          type=gha
-        cache-to: |
-          type=registry,ref=${{ steps.vars.outputs.cache_image }},mode=max
-          type=gha,mode=max
+        cache-from: ${{ steps.vars.outputs.cache_from }}
+        cache-to: ${{ steps.vars.outputs.cache_to_push }}
         provenance: ${{ inputs.provenance }}
         sbom: ${{ inputs.sbom }}
         secrets: ${{ inputs.build-secrets }}
