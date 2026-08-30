@@ -112,6 +112,26 @@ inputs:
       is faster than a registry round-trip.
     required: false
     default: 'true'
+  pull:
+    description: >-
+      Whether to re-resolve every `FROM` against the registry on each build
+      (docker/build-push-action `pull:`, i.e. `--pull`). Default 'true'.
+
+      The org golden bases are MOVING tags, rebuilt for CVE patches, and GHCR
+      garbage-collects the superseded manifest. Without `--pull`, buildx can
+      reuse the base digest a previous run resolved into the layer cache — and
+      on the self-hosted runners that state persists between jobs. Two failure
+      modes follow: the build silently keeps using a base we have since
+      patched, or, once the old manifest is GC'd, it fails outright resolving a
+      digest that no longer exists. The latter took finance-scenario-simulator's
+      backend offline for two commits in Aug 2026 without anyone noticing.
+
+      Costs one registry round-trip per build; the layers themselves still come
+      from cache when the base has not actually moved. Set 'false' only if a
+      build must be reproducible against a base captured earlier in the same
+      workflow.
+    required: false
+    default: 'true'
   provenance:
     description: 'Pass-through to docker/build-push-action provenance.'
     required: false
@@ -242,6 +262,7 @@ runs:
         platforms: ${{ inputs.platforms }}
         load: true
         push: false
+        pull: ${{ inputs.pull }}
         tags: ${{ steps.vars.outputs.scan_tag }}
         labels: ${{ inputs.labels }}
         build-args: ${{ inputs.build-args }}
@@ -298,6 +319,14 @@ runs:
         target: ${{ inputs.target }}
         platforms: ${{ inputs.platforms }}
         push: true
+        # Pulls too, deliberately. Pulling only on the scan build would leave
+        # this one free to resolve `FROM` from stale cache — i.e. scan a patched
+        # base and push an unpatched one, which is worse than the pin this
+        # input exists to replace. The cost is that a base rebuilt in the
+        # seconds between the two builds lands here unscanned; that base is a
+        # CVE patch of the one just scanned, and the window is seconds against
+        # a daily cadence.
+        pull: ${{ inputs.pull }}
         tags: ${{ inputs.tags }}
         labels: ${{ inputs.labels }}
         build-args: ${{ inputs.build-args }}

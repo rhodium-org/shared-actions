@@ -95,6 +95,7 @@ jobs:
 | `registry-password` | (empty)              | Required when `push=true`. Usually `secrets.GITHUB_TOKEN`. |
 | `cache-image`       | `<image-name>:buildcache` | Override only if you want a separate cache namespace. |
 | `gha-cache`         | `true`               | Set `'false'` for images over ~10 GB. See [Cache sizing](#cache-sizing). |
+| `pull`              | `true`               | Re-resolve every `FROM` against the registry each build. Keep `true` for the moving golden bases. See [Moving base tags](#moving-base-tags). |
 | `provenance`        | `true`               | Pass-through. |
 | `sbom`              | `true`               | Pass-through. |
 
@@ -129,6 +130,38 @@ persists, so nothing is lost.
 
 Rule of thumb: if the image is over ~8 GB, or the job log shows
 `exporting to GitHub Actions Cache` taking minutes, turn it off.
+
+## Moving base tags
+
+Do not pin the golden bases by digest in your Dockerfile:
+
+```dockerfile
+# Wrong — a time bomb.
+FROM ghcr.io/rhodium-org/base-eclipse-temurin:21-jre-alpine@sha256:89dfb70d...
+
+# Right.
+FROM ghcr.io/rhodium-org/base-eclipse-temurin:21-jre-alpine
+```
+
+`base-eclipse-temurin`, `base-node`, `base-nginx` and friends are **moving
+tags**. They are rebuilt for CVE patches and GHCR garbage-collects the
+manifest they superseded. A digest pinned in a Dockerfile therefore builds
+fine right up until the base is next rebuilt, and then every build fails with
+`failed to resolve source metadata ... not found` — at a date nobody chose.
+That took finance-scenario-simulator's backend offline for two commits in
+August 2026; because its paths filter meant only the frontend job ran, the
+workflow stayed green and a committed API change never reached production.
+
+Renovate will not re-pin them: the org config sets `pinDigests: false` for the
+`dockerfile` manager precisely because a daily-rebuilt base makes a pin stale
+within a day.
+
+`pull: true` (the default) is the other half. It passes `--pull` to both the
+scan build and the push build so buildx re-resolves `FROM` against the
+registry instead of reusing a digest an earlier run left in the layer cache —
+which matters especially on the self-hosted runners, where that state persists
+between jobs. Both builds pull, so the image that gets pushed is resolved as
+freshly as the one that got scanned.
 
 ## Guarding suppressions
 
