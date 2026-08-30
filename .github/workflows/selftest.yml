@@ -38,6 +38,11 @@ jobs:
           image-name: ghcr.io/rhodium-org/shared-actions-selftest-clean
           context: tests/clean
           dockerfile: tests/clean/Dockerfile
+          # Cache-buster for the fixture's `apk upgrade` layer — same reason
+          # base-images.yml passes one. Without a per-run value the patch layer
+          # comes back from buildcache and the fixture rots to whatever package
+          # set it was first built with.
+          build-args: PATCH_EPOCH=${{ github.run_id }}
           # A passing predicate guard must NOT break a clean build.
           predicate-guard: tests/guard-pass.sh
           push: 'false'
