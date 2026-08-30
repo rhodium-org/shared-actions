@@ -33,10 +33,10 @@ specific golden-base digest and bumps it as new builds publish.
 
 ## Published images
 
-Covering every **runtime** (final-stage) Alpine base in the fleet — node servers,
-nginx-served SPAs, and Java JRE runtimes. (Builder-only Alpine stages, e.g. a
-node builder feeding an nginx final stage, don't affect the final scan, so the
-runtime base is what matters.)
+Covering every **runtime** (final-stage) base in the fleet — node servers,
+nginx-served SPAs, Java JRE runtimes and Python runtimes. (Builder-only stages,
+e.g. a node builder feeding an nginx final stage, don't affect the final scan,
+so the runtime base is what matters.)
 
 | image | upstream | final stage of |
 |-------|----------|----------------|
@@ -47,9 +47,21 @@ runtime base is what matters.)
 | `ghcr.io/rhodium-org/base-nginx-unprivileged:alpine` | `nginxinc/nginx-unprivileged:alpine` | SPA frontends (non-root) |
 | `ghcr.io/rhodium-org/base-eclipse-temurin:17-jre-alpine` | `eclipse-temurin:17-jre-alpine` | Java runtimes |
 | `ghcr.io/rhodium-org/base-eclipse-temurin:21-jre-alpine` | `eclipse-temurin:21-jre-alpine` | Java runtimes |
+| `ghcr.io/rhodium-org/base-eclipse-temurin:21-jre-noble` | `eclipse-temurin:21-jre-noble` | Java runtimes that can't use musl |
 | `ghcr.io/rhodium-org/base-python:3.12-slim` | `python:3.12-slim` | Python runtimes |
 | `ghcr.io/rhodium-org/base-python:3.13-slim` | `python:3.13-slim` | Python runtimes |
 | `ghcr.io/rhodium-org/base-python:3.14-slim` | `python:3.14-slim` | Python runtimes |
+
+### Prefer `21-jre-alpine`; reach for `21-jre-noble` only if you must
+
+The Alpine JRE is the default Java runtime base. Use `21-jre-noble` only when
+something in the image needs glibc — a JNI library, a native agent, or a
+Playwright/Chromium dependency. It is a bigger image on a slower-moving patch
+cadence, but it is a *golden* image, which upstream `eclipse-temurin:21-jre-noble`
+is not.
+
+Never use `eclipse-temurin:21-jre` — that tag resolves to **jammy**, which ships
+Go binaries with stale Go stdlib HIGH CVEs and will fail your Trivy gate.
 
 ### The Python family is Debian, not Alpine
 

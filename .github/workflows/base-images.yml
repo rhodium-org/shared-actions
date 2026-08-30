@@ -59,6 +59,7 @@ jobs:
           - { family: nginx-unprivileged, tag: alpine }
           - { family: eclipse-temurin, tag: 17-jre-alpine }
           - { family: eclipse-temurin, tag: 21-jre-alpine }
+          - { family: eclipse-temurin, tag: 21-jre-noble }
           - { family: python, tag: 3.12-slim }
           - { family: python, tag: 3.13-slim }
           - { family: python, tag: 3.14-slim }
