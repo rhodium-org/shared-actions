@@ -117,6 +117,20 @@ recover the space too, do the removal in the stage you `COPY --from`.
 Note the `base-python` images deliberately **keep** pip — they are bases that
 downstream builders install with. Strip it in your runtime stage, not upstream.
 
+Strip pip only — **leave setuptools alone**. The 84.0.0 on the path scans
+clean, so deleting it fixes no finding, and some trees import it directly
+(`skyreels-v3`'s `generate_video.py` does, unconditionally). Do not justify
+keeping it on the grounds that something might need `pkg_resources`: setuptools
+dropped that shim in **82**, so the base images have not provided it for some
+time. Check the image rather than trusting a remembered version number —
+80.9.0 and 81.0.0 both still ship it, and 81.0.0 is the only 81.x release:
+
+```console
+$ docker run --rm ghcr.io/rhodium-org/base-python:3.12-slim \
+    python3 -c "import pkg_resources"
+ModuleNotFoundError: No module named 'pkg_resources'
+```
+
 ## What is deliberately exempt
 
 Not every large image is a defect. Two current examples:
