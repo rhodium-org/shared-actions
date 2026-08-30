@@ -41,6 +41,25 @@ jobs:
 That replaces ~80 lines of `setup-buildx → build (load:true) → trivy →
 login → build (push:true)` boilerplate.
 
+> **Tag width — read before writing the Flux ImagePolicy.**
+> `ts-{{date 'X'}}000` is unix **seconds with three literal zeros appended**, so the
+> tag is **13 digits**, not 10. The matching policy in the cluster repo must therefore be:
+>
+> ```yaml
+> filterTags:
+>   pattern: '^ts-(?P<ts>[0-9]{13})$'   # pinned AND anchored
+>   extract: '$ts'
+> policy:
+>   numerical:
+>     order: asc
+> ```
+>
+> Pin `{10}` against this tag line and Flux matches nothing, so the app never deploys.
+> Leave the pattern unpinned (`[0-9]+`) or unanchored (`[0-9]{13}` with no `$`) and a
+> single malformed over-long tag outranks every real build for ever — silently, with no
+> error anywhere. If you would rather emit 10-digit seconds, use plain
+> `ts-{{date 'X'}}` (no `000`) and pin `{10}$`. Either is fine; they must agree.
+
 ## Pattern B — multiple images in one repo (e.g. shared-iam)
 
 Call the action once per image, each with its own `image-name`, `context`
