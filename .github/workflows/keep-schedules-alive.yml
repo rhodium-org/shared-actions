@@ -1,0 +1,48 @@
+name: keep-schedules-alive
+
+# GitHub disables a repository's `schedule:` triggers after 60 days without
+# activity. This repo is often untouched that long, and it has bitten twice:
+#   - base-images.yml stopped rebuilding the golden bases (found 2026-11-05,
+#     every downstream Trivy gate went red on stale OS packages);
+#   - selftest.yml stopped proving the Trivy gate works (found 2026-11-22 via
+#     the cluster's TrivyGateSelftestStale alert, after 10 days of silence).
+#
+# Re-enabling a workflow through the API resets that clock, so once a week
+# this re-enables every workflow here that has a schedule, itself included.
+# It also repairs one GitHub has already disabled.
+
+on:
+  schedule:
+    # Mondays 05:29 UTC.
+    - cron: '29 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Re-enable every scheduled workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          enabled=0
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -f "$f" ] || continue
+            grep -qE '^\s*schedule:' "$f" || continue
+            name=$(basename "$f")
+            before=$(gh api "repos/$REPO/actions/workflows/$name" --jq .state)
+            gh api -X PUT "repos/$REPO/actions/workflows/$name/enable" >/dev/null
+            echo "$name: $before -> active"
+            enabled=$((enabled + 1))
+          done
+          if [ "$enabled" -eq 0 ]; then
+            echo "::error::no scheduled workflows found; this job is misconfigured"
+            exit 1
+          fi
